@@ -1,0 +1,13 @@
+{
+  "name": "Toep Samen",
+  "short_name": "Toepen",
+  "description": "Mobiel toepen met vrienden",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#11130f",
+  "theme_color": "#11130f",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
