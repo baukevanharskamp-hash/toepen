@@ -5,6 +5,7 @@ import { EndScreen } from "@/components/end-screen";
 import { GameTable } from "@/components/game-table";
 import { Home } from "@/components/home";
 import { Lobby } from "@/components/lobby";
+import { playSound } from "@/lib/sounds";
 import { PublicGame } from "@/lib/types";
 
 export default function Page() {
@@ -13,6 +14,8 @@ export default function Page() {
   const [game, setGame] = useState<PublicGame | null>(null);
   const [error, setError] = useState("");
   const [hydrated, setHydrated] = useState(false);
+  const [soundVolume, setSoundVolume] = useState(0.75);
+  const [lastEventKey, setLastEventKey] = useState("");
   const initialCode = hydrated ? new URLSearchParams(window.location.search).get("spel") ?? "" : "";
 
   const load = useCallback(async (gameCode: string, playerToken: string) => {
@@ -28,12 +31,36 @@ export default function Page() {
   useEffect(() => {
     const savedCode = localStorage.getItem("toep-code") ?? "";
     const savedToken = localStorage.getItem("toep-token") ?? "";
+    const savedVolume = localStorage.getItem("toep-sound-volume");
     setHydrated(true);
+    if (savedVolume !== null) setSoundVolume(Number(savedVolume));
     if (savedCode && savedToken) {
       setCode(savedCode); setToken(savedToken);
       load(savedCode, savedToken).catch(() => {});
     }
   }, [load]);
+
+  useEffect(() => {
+    if (!game?.me || game.status !== "playing") return;
+    const currentCard = game.trickCards.at(-1);
+    const eventKey = currentCard
+      ? `card:${game.round}:${game.trick}:${currentCard.playerId}:${currentCard.card.id}`
+      : game.toepCallerId
+        ? `toep:${game.round}:${game.roundValue}:${game.toepCallerId}`
+        : game.message.includes("wint de ronde") || game.message.includes("wint met een boer")
+          ? `win:${game.round}:${game.message}`
+          : "";
+    if (!eventKey || eventKey === lastEventKey) return;
+    setLastEventKey(eventKey);
+    if (eventKey.startsWith("card:")) playSound("card", soundVolume);
+    if (eventKey.startsWith("toep:")) playSound("toep", soundVolume);
+    if (eventKey.startsWith("win:") && game.message.includes(game.me.name)) playSound("applause", soundVolume);
+  }, [game, lastEventKey, soundVolume]);
+
+  function updateSoundVolume(value: number) {
+    setSoundVolume(value);
+    localStorage.setItem("toep-sound-volume", String(value));
+  }
 
   useEffect(() => {
     if (!code || !token || !game) return;
@@ -72,7 +99,7 @@ export default function Page() {
   return (
     <>
       {game.status === "lobby" && <Lobby game={game} act={(type) => act(type)} />}
-      {game.status === "playing" && <GameTable game={game} act={act} />}
+      {game.status === "playing" && <GameTable game={game} act={act} soundVolume={soundVolume} setSoundVolume={updateSoundVolume} />}
       {game.status === "finished" && <EndScreen game={game} goHome={goHome} />}
       {error && <button onClick={() => setError("")} className="fixed left-1/2 top-[max(1rem,env(safe-area-inset-top))] z-50 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 rounded-2xl border border-[#e86c5d]/30 bg-[#52251f] p-4 text-left text-sm font-bold shadow-2xl">{error}<span className="float-right opacity-50">×</span></button>}
     </>
