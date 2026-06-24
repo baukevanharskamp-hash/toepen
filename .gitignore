@@ -2,6 +2,10 @@
 node_modules
 .pnpm-store
 .deploy-push
+render-update
 .env*.local
 coverage
 *.log
+.DS_Store
+*.zip
+tsconfig.tsbuildinfo

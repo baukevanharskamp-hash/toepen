@@ -17,7 +17,7 @@ export type Player = {
   usedLaundry: boolean;
 };
 export type PlayedCard = { playerId: string; card: Card };
-export type GameStatus = "lobby" | "playing" | "finished";
+export type GameStatus = "lobby" | "playing" | "finished" | "cancelled";
 export type Game = {
   code: string;
   createdAt: number;

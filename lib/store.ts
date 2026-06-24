@@ -50,6 +50,14 @@ function me(game: Game, token: string): Player {
 
 export function action(game: Game, token: string, type: string, payload: Record<string, unknown> = {}) {
   const actor = me(game, token);
+  if (type === "stop") {
+    if (actor.id !== game.hostId) throw new Error("Alleen de host kan het potje stoppen.");
+    game.status = "cancelled";
+    game.turnPlayerId = null;
+    game.waitingForResponses = [];
+    game.message = `${actor.name} heeft het potje gestopt`;
+    return;
+  }
   if (type === "ready") {
     actor.ready = !actor.ready;
     game.message = actor.ready ? `${actor.name} is klaar` : `${actor.name} wacht nog even`;

@@ -1,14 +1,29 @@
 "use client";
 
+import { useEffect, useMemo, useRef, useState } from "react";
 import { hasDirtyLaundry } from "@/lib/game";
-import { PublicGame } from "@/lib/types";
+import { Card, PublicGame } from "@/lib/types";
 import { Button, PlayingCard, Scoreboard, TinyCardBacks } from "./ui";
 
-export function GameTable({ game, act }: { game: PublicGame; act: (type: string, payload?: Record<string, unknown>) => Promise<void> }) {
+export function GameTable({
+  game, act, onStop, soundVolume, setSoundVolume,
+}: {
+  game: PublicGame;
+  act: (type: string, payload?: Record<string, unknown>) => Promise<void>;
+  onStop: () => void;
+  soundVolume: number;
+  setSoundVolume: (value: number) => void;
+}) {
   const me = game.me!;
   const myTurn = game.turnPlayerId === me.id;
   const mustRespond = game.waitingForResponses.includes(me.id);
   const canLaundry = game.laundryEnabled && !me.usedLaundry && hasDirtyLaundry({ ...me, token: "" });
+  const [handOrder, setHandOrder] = useState<string[]>([]);
+  const [draggingCardId, setDraggingCardId] = useState<string | null>(null);
+  const [dropArmed, setDropArmed] = useState(false);
+  const [confirmStop, setConfirmStop] = useState(false);
+  const dragStart = useRef<{ x: number; y: number; id: string } | null>(null);
+  const suppressNextClick = useRef(false);
   const playedCards = [...(game.completedTricks ?? []).flat(), ...game.trickCards];
   const playedByPlayer = new Map(game.players.map((player) => [
     player.id,
@@ -18,6 +33,41 @@ export function GameTable({ game, act }: { game: PublicGame; act: (type: string,
     ...game.players.filter((player) => player.id !== me.id),
     game.players.find((player) => player.id === me.id)!,
   ];
+  const orderedHand = useMemo(() => {
+    const byId = new Map(me.hand.map((card) => [card.id, card]));
+    return [
+      ...handOrder.map((id) => byId.get(id)).filter(Boolean),
+      ...me.hand.filter((card) => !handOrder.includes(card.id)),
+    ] as Card[];
+  }, [handOrder, me.hand]);
+
+  useEffect(() => {
+    setHandOrder((current) => [
+      ...current.filter((id) => me.hand.some((card) => card.id === id)),
+      ...me.hand.map((card) => card.id).filter((id) => !current.includes(id)),
+    ]);
+  }, [me.hand]);
+
+  function reorder(cardId: string, targetId: string) {
+    if (cardId === targetId) return;
+    setHandOrder((current) => {
+      const next = current.filter((id) => id !== cardId);
+      const targetIndex = next.indexOf(targetId);
+      next.splice(targetIndex < 0 ? next.length : targetIndex, 0, cardId);
+      return next;
+    });
+  }
+
+  async function finishDrag(clientY: number, card: Card) {
+    const legal = myTurn && game.legalCardIds.includes(card.id) && !game.waitingForResponses.length;
+    if (dropArmed && legal) {
+      suppressNextClick.current = true;
+      await act("play", { cardId: card.id });
+    }
+    setDropArmed(false);
+    setDraggingCardId(null);
+    dragStart.current = null;
+  }
 
   return (
     <main className="felt mx-auto flex min-h-dvh max-w-md flex-col overflow-hidden border-x border-white/5">
@@ -29,6 +79,14 @@ export function GameTable({ game, act }: { game: PublicGame; act: (type: string,
           </div>
         </div>
         <Scoreboard game={game} />
+        <div className="mt-2 flex justify-end">
+          {me.id === game.hostId && (
+            <button onClick={() => setConfirmStop(true)}
+              className="rounded-full border border-[#e86c5d]/30 bg-[#e86c5d]/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-[#ff9d91]">
+              Spel stoppen
+            </button>
+          )}
+        </div>
       </header>
 
       <section className="relative flex min-h-0 flex-1 flex-col px-3 py-3">
@@ -50,7 +108,14 @@ export function GameTable({ game, act }: { game: PublicGame; act: (type: string,
         </div>
 
         <div className="relative my-3 flex min-h-[220px] flex-1 items-center justify-center">
-          <div className="absolute h-44 w-72 rounded-[50%] border border-white/[.08] bg-black/[.07] shadow-inner" />
+          <div className={`absolute h-44 w-72 rounded-[50%] border bg-black/[.07] shadow-inner transition ${
+            dropArmed ? "border-lime/80 shadow-[0_0_44px_rgba(201,241,74,.24)]" : "border-white/[.08]"
+          }`} />
+          {dropArmed && (
+            <div className="absolute grid h-16 w-16 place-items-center rounded-full border-2 border-lime bg-lime/20 text-4xl font-black text-lime shadow-[0_0_30px_rgba(201,241,74,.22)]">
+              +
+            </div>
+          )}
           {playedCards.length === 0 ? (
             <div className="relative text-center">
               <div className="text-3xl opacity-20">♣</div>
@@ -100,15 +165,68 @@ export function GameTable({ game, act }: { game: PublicGame; act: (type: string,
         <div className="wood-tray relative rounded-t-[28px] border border-amber/30 px-3 pb-[calc(.65rem+var(--safe-bottom))] pt-3 shadow-[0_-18px_38px_rgba(0,0,0,.24)]">
           <div className="mb-2 flex items-end justify-between px-1">
             <div><div className="text-[10px] font-black uppercase tracking-wider text-cream/70">Jouw hand</div><div className="text-xs font-bold text-cream/80">{myTurn ? "Tik een kaart om te spelen" : "Niet op tafel, nog in je hand"}</div></div>
-            {canLaundry && <button onClick={() => act("laundry")} className="rounded-full bg-amber px-3 py-2 text-[10px] font-black text-ink">Vuile was openen</button>}
+            <div className="flex items-center gap-2">
+              {canLaundry && <button onClick={() => act("laundry")} className="rounded-full bg-amber px-3 py-2 text-[10px] font-black text-ink">Vuile was openen</button>}
+              <button onClick={() => setSoundVolume(soundVolume > 0 ? 0 : 0.75)} className="rounded-full border border-white/20 bg-black/15 px-3 py-2 text-[10px] font-black text-cream">
+                {soundVolume > 0 ? "Geluid" : "Stil"}
+              </button>
+            </div>
           </div>
+          {mustRespond && (
+            <div className="mb-2 rounded-2xl border border-amber/35 bg-amber/15 p-3">
+              <div className="text-[10px] font-black uppercase tracking-[.2em] text-amber">Er is getoept</div>
+              <div className="mt-1 text-sm font-bold text-cream/80">Bekijk rustig je kaarten en kies: meegaan of passen.</div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <Button variant="ghost" className="min-h-11" onClick={() => act("respond", { choice: "fold" })}>Passen</Button>
+                <Button className="min-h-11" onClick={() => act("respond", { choice: "stay" })}>Meegaan</Button>
+              </div>
+            </div>
+          )}
+          <label className="mb-2 flex items-center gap-2 px-1 text-[10px] font-black uppercase tracking-wider text-cream/55">
+            Volume
+            <input type="range" min="0" max="1" step="0.05" value={soundVolume}
+              onChange={(event) => setSoundVolume(Number(event.target.value))}
+              className="h-1 flex-1 accent-lime" />
+          </label>
           <div className="rounded-[22px] border border-black/25 bg-black/15 px-2 py-3 shadow-inner">
             <div className="flex min-h-[132px] items-end justify-center -space-x-2 overflow-visible">
-              {me.hand.map((card, index) => (
-                <PlayingCard key={card.id} card={card} delay={index * 55}
-                  disabled={!myTurn || !game.legalCardIds.includes(card.id) || !!game.waitingForResponses.length}
-                  onClick={() => act("play", { cardId: card.id })} />
-              ))}
+              {orderedHand.map((card, index) => {
+                const disabled = !myTurn || !game.legalCardIds.includes(card.id) || !!game.waitingForResponses.length;
+                return (
+                  <div key={card.id}
+                    draggable
+                    onDragStart={(event) => {
+                      setDraggingCardId(card.id);
+                      dragStart.current = { x: event.clientX, y: event.clientY, id: card.id };
+                    }}
+                    onDragEnter={() => draggingCardId && reorder(draggingCardId, card.id)}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      setDropArmed(Boolean(draggingCardId && dragStart.current && dragStart.current.y - event.clientY > 86));
+                    }}
+                    onDragEnd={(event) => void finishDrag(event.clientY, card)}
+                    onPointerDown={(event) => {
+                      setDraggingCardId(card.id);
+                      dragStart.current = { x: event.clientX, y: event.clientY, id: card.id };
+                    }}
+                    onPointerMove={(event) => {
+                      if (dragStart.current?.id !== card.id) return;
+                      setDropArmed(dragStart.current.y - event.clientY > 86);
+                    }}
+                    onPointerUp={(event) => void finishDrag(event.clientY, card)}
+                    className={`${draggingCardId === card.id ? "z-20 scale-105" : "z-10"} touch-none transition`}>
+                    <PlayingCard card={card} delay={index * 55}
+                      disabled={disabled}
+                      onClick={() => {
+                        if (suppressNextClick.current) {
+                          suppressNextClick.current = false;
+                          return;
+                        }
+                        void act("play", { cardId: card.id });
+                      }} />
+                  </div>
+                );
+              })}
               {!me.hand.length && (
                 <div className="grid h-24 place-items-center text-center text-xs font-black uppercase tracking-[.18em] text-cream/45">
                   Alle kaarten gespeeld
@@ -119,24 +237,29 @@ export function GameTable({ game, act }: { game: PublicGame; act: (type: string,
         </div>
       </section>
 
-      {mustRespond && (
-        <div className="fixed inset-0 z-30 flex items-end justify-center bg-black/65 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-[28px] border border-white/10 bg-ink p-5 shadow-2xl">
-            <div className="text-xs font-black uppercase tracking-[.2em] text-amber">Er is getoept</div>
-            <h2 className="mt-2 text-3xl font-black">Ga je mee?</h2>
-            <p className="mt-2 text-sm leading-6 text-cream/50">De ronde is nu {game.roundValue} punten waard. Passen kost je {Math.max(1, game.roundValue - 1)}.</p>
-            <div className="mt-5 grid grid-cols-2 gap-2">
-              <Button variant="ghost" onClick={() => act("respond", { choice: "fold" })}>Passen</Button>
-              <Button onClick={() => act("respond", { choice: "stay" })}>Meegaan</Button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {!mustRespond && !game.waitingForResponses.length && game.status === "playing" && (
         <button onClick={() => act("toep")} className="fixed bottom-[calc(184px+var(--safe-bottom))] right-[max(1rem,calc((100vw-28rem)/2+1rem))] z-20 grid h-14 w-14 rotate-3 place-items-center rounded-full border-4 border-ink bg-amber text-sm font-black text-ink shadow-xl active:scale-95">
           TOEP
         </button>
+      )}
+
+      {confirmStop && (
+        <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/65 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-[28px] border border-white/10 bg-ink p-5 shadow-2xl">
+            <div className="text-xs font-black uppercase tracking-[.2em] text-[#ff9d91]">Weet je het zeker?</div>
+            <h2 className="mt-2 text-3xl font-black">Potje stoppen</h2>
+            <p className="mt-2 text-sm leading-6 text-cream/55">
+              Dit stopt het potje voor iedereen. Alle spelers gaan terug naar het beginscherm en kunnen daarna een nieuw potje starten.
+            </p>
+            <div className="mt-5 grid grid-cols-2 gap-2">
+              <Button variant="ghost" onClick={() => setConfirmStop(false)}>Annuleren</Button>
+              <Button variant="danger" onClick={() => {
+                setConfirmStop(false);
+                void act("stop").then(onStop);
+              }}>Ja, stoppen</Button>
+            </div>
+          </div>
+        </div>
       )}
     </main>
   );
