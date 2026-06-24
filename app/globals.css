@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+* { box-sizing: border-box; }
+html { background: #11130f; }
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background:
+    radial-gradient(circle at 50% -10%, rgba(201, 241, 74, .12), transparent 34rem),
+    #11130f;
+  color: #f6efd9;
+  font-family: Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+button, input, textarea, select { font: inherit; }
+button { -webkit-tap-highlight-color: transparent; }
+
+.felt {
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255,255,255,.055), transparent 45%),
+    repeating-linear-gradient(135deg, rgba(255,255,255,.012) 0 1px, transparent 1px 4px),
+    #183d2d;
+}
+
+.wood-tray {
+  background:
+    linear-gradient(90deg, rgba(255,255,255,.08), transparent 18%, rgba(0,0,0,.16) 42%, transparent 68%, rgba(255,255,255,.06)),
+    repeating-linear-gradient(12deg, rgba(70, 38, 18, .28) 0 9px, rgba(140, 83, 38, .2) 9px 18px),
+    linear-gradient(180deg, #8d572b, #563014);
+}
+
+.noise::before {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  opacity: .22;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.08'/%3E%3C/svg%3E");
+}
+
+.card-enter { animation: deal .35s cubic-bezier(.2,.8,.2,1) both; }
+.pulse-turn { animation: glow 1.6s ease-in-out infinite; }
+@keyframes deal { from { opacity: 0; transform: translateY(30px) rotate(3deg); } }
+@keyframes glow { 50% { box-shadow: 0 0 0 5px rgba(201,241,74,.08); } }
