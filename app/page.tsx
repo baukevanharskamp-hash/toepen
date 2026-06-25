@@ -113,7 +113,7 @@ export default function Page() {
   return (
     <>
       {game.status === "lobby" && <Lobby game={game} act={(type) => act(type)} />}
-      {game.status === "playing" && <GameTable game={game} act={act} onStop={goHome} soundVolume={soundVolume} setSoundVolume={updateSoundVolume} />}
+      {(game.status === "playing" || game.status === "discarding") && <GameTable game={game} act={act} onStop={goHome} soundVolume={soundVolume} setSoundVolume={updateSoundVolume} />}
       {game.status === "finished" && <EndScreen game={game} goHome={goHome} />}
       {error && <button onClick={() => setError("")} className="fixed left-1/2 top-[max(1rem,env(safe-area-inset-top))] z-50 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 rounded-2xl border border-[#e86c5d]/30 bg-[#52251f] p-4 text-left text-sm font-bold shadow-2xl">{error}<span className="float-right opacity-50">×</span></button>}
     </>

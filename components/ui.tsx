@@ -89,7 +89,7 @@ export function Scoreboard({ game }: { game: PublicGame }) {
           </div>
           <div className="mt-1 flex items-end justify-between">
             <span className="text-2xl font-black leading-none">{player.score}</span>
-            <span className="text-[9px] font-bold uppercase text-cream/40">/ 15</span>
+            <span className="text-[9px] font-bold uppercase text-cream/40">/ {game.targetScore}</span>
           </div>
         </div>
       ))}

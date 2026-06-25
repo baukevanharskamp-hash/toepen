@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
-import { dealRound, finishRound, hasDirtyLaundry, legalCards, makeDeck, nextActive, shuffle, trickWinner } from "./game";
-import { Game, Player } from "./types";
+import { dealRound, finishRound, hasDirtyLaundry, legalCards, makeDeck, nextActive, shuffle, tricksPerRound, trickWinner } from "./game";
+import { Game, GameMode, Player } from "./types";
 
 declare global { var toepGames: Map<string, Game> | undefined; }
 const games = global.toepGames ?? new Map<string, Game>();
@@ -14,18 +14,21 @@ const player = (name: string, avatar?: string): Player => ({
 });
 
 export function createGame(input: {
-  name: string; avatar?: string; maxPlayers: 2 | 3 | 4; task: string; stopAtFirstLoser?: boolean;
+  name: string; avatar?: string; maxPlayers: 2 | 3 | 4; task: string; stopAtFirstLoser?: boolean; mode?: GameMode;
 }): { game: Game; token: string } {
   const host = player(input.name, input.avatar);
+  const mode = input.mode ?? "normal";
+  const maxPlayers = mode === "finale" ? 2 : input.maxPlayers;
+  const targetScore = mode === "quick" ? 5 : 15;
   let gameCode = code();
   while (games.has(gameCode)) gameCode = code();
   const game: Game = {
     code: gameCode, createdAt: Date.now(), status: "lobby", hostId: host.id,
-    maxPlayers: input.maxPlayers, task: input.task.trim(), stopAtFirstLoser: input.stopAtFirstLoser ?? true,
+    maxPlayers, mode, targetScore, task: input.task.trim(), stopAtFirstLoser: input.stopAtFirstLoser ?? true,
     laundryEnabled: true, jackBonusEnabled: true, players: [host], round: 0, roundValue: 1,
     trick: 0, dealerIndex: 0, turnPlayerId: null, leadPlayerId: null, trickCards: [], completedTricks: [],
-    lastTrick: [], waitingForResponses: [], toepCallerId: null, message: "Wachten op spelers",
-    loserId: null,
+    lastTrick: [], waitingForResponses: [], discardingPlayerIds: [], starterRolls: [],
+    toepCallerId: null, message: "Wachten op spelers", loserId: null, finalWinnerId: null,
   };
   games.set(gameCode, game);
   return { game, token: host.token };
@@ -71,6 +74,23 @@ export function action(game: Game, token: string, type: string, payload: Record<
     dealRound(game);
     return;
   }
+  if (type === "discard") {
+    if (game.status !== "discarding") throw new Error("Er hoeven nu geen kaarten weg.");
+    if (!game.discardingPlayerIds.includes(actor.id)) throw new Error("Jij hebt al kaarten weggegooid.");
+    const cardIds = Array.isArray(payload.cardIds) ? payload.cardIds.filter((id): id is string => typeof id === "string") : [];
+    if (cardIds.length !== 3 || new Set(cardIds).size !== 3) throw new Error("Kies precies 3 kaarten.");
+    if (!cardIds.every((id) => actor.hand.some((card) => card.id === id))) throw new Error("Je kunt alleen kaarten uit je hand weggooien.");
+    actor.hand = actor.hand.filter((card) => !cardIds.includes(card.id));
+    game.discardingPlayerIds = game.discardingPlayerIds.filter((id) => id !== actor.id);
+    game.message = `${actor.name} heeft 3 kaarten weggegooid`;
+    if (!game.discardingPlayerIds.length) {
+      game.status = "playing";
+      game.turnPlayerId = game.leadPlayerId;
+      const leader = game.players.find((player) => player.id === game.leadPlayerId);
+      game.message = `${leader?.name ?? "De winnaar van de dobbelsteen"} mag uitkomen`;
+    }
+    return;
+  }
   if (game.status !== "playing") throw new Error("Het potje is niet actief.");
   if (type === "play") {
     if (game.waitingForResponses.length) throw new Error("Wacht eerst op de Toep-reacties.");
@@ -93,7 +113,7 @@ export function action(game: Game, token: string, type: string, payload: Record<
     game.lastTrick = game.trickCards;
     game.completedTricks.push(game.trickCards);
     game.trickCards = [];
-    if (game.trick === 4) {
+    if (game.trick === tricksPerRound(game)) {
       finishRound(game, winnerId, winningPlay.card);
     } else {
       game.trick += 1;
@@ -104,6 +124,7 @@ export function action(game: Game, token: string, type: string, payload: Record<
     return;
   }
   if (type === "toep") {
+    if (game.mode === "finale") throw new Error("Koningstoep speelt al direct om de winst.");
     if (game.toepCallerId) throw new Error("Er loopt al een Toep.");
     game.roundValue += 1;
     game.toepCallerId = actor.id;

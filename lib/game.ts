@@ -1,4 +1,4 @@
-import { Card, Game, Player, PublicGame, RANKS, Rank, SUITS } from "./types";
+import { Card, Game, Player, PublicGame, RANKS, Rank, StarterRoll, SUITS } from "./types";
 
 const strength: Record<Rank, number> = {
   B: 0, V: 1, H: 2, A: 3, "7": 4, "8": 5, "9": 6, "10": 7,
@@ -43,10 +43,26 @@ export function publicGame(game: Game, token?: string): PublicGame {
     ...game,
     players: game.players.map(({ token: _token, hand, ...player }) => ({ ...player, cardCount: hand.length })),
     me: me ? (({ token: _token, ...player }) => player)(me) : null,
-    legalCardIds: me && game.turnPlayerId === me.id
+    legalCardIds: me && game.status === "playing" && game.turnPlayerId === me.id
       ? legalCards(me.hand, leadSuit).map((card) => card.id)
       : [],
   };
+}
+
+function rollStarter(players: Player[]): { leader: Player; rolls: StarterRoll[] } {
+  let contenders = players;
+  const allRolls: StarterRoll[] = [];
+  while (contenders.length > 1) {
+    const rolls = contenders.map((player) => ({ playerId: player.id, roll: Math.ceil(Math.random() * 6) }));
+    allRolls.push(...rolls);
+    const highest = Math.max(...rolls.map((item) => item.roll));
+    contenders = contenders.filter((player) => rolls.some((item) => item.playerId === player.id && item.roll === highest));
+  }
+  return { leader: contenders[0], rolls: allRolls };
+}
+
+export function tricksPerRound(game: Game): number {
+  return game.mode === "finale" ? 8 : 4;
 }
 
 export function nextActive(game: Game, fromId: string): Player {
@@ -60,19 +76,33 @@ export function nextActive(game: Game, fromId: string): Player {
 
 export function dealRound(game: Game): void {
   const deck = shuffle(makeDeck());
+  const cardsPerPlayer = game.mode === "finale" ? 11 : 4;
   game.players.forEach((player, index) => {
-    player.hand = player.active ? deck.slice(index * 4, index * 4 + 4) : [];
+    player.hand = player.active ? deck.slice(index * cardsPerPlayer, index * cardsPerPlayer + cardsPerPlayer) : [];
     player.folded = false;
     player.usedLaundry = false;
   });
   game.round += 1;
-  game.roundValue = 1;
+  game.roundValue = game.mode === "finale" ? game.targetScore : 1;
   game.trick = 1;
   game.trickCards = [];
   game.completedTricks = [];
   game.lastTrick = [];
   game.waitingForResponses = [];
+  game.discardingPlayerIds = [];
+  game.starterRolls = [];
   game.toepCallerId = null;
+  const activePlayers = game.players.filter((player) => player.active);
+  if (game.mode === "finale") {
+    const roll = rollStarter(activePlayers);
+    game.starterRolls = roll.rolls;
+    game.discardingPlayerIds = activePlayers.map((player) => player.id);
+    game.status = "discarding";
+    game.leadPlayerId = roll.leader.id;
+    game.turnPlayerId = null;
+    game.message = `Dobbelsteen gegooid: ${roll.leader.name} mag straks beginnen`;
+    return;
+  }
   const leader = game.players[(game.dealerIndex + 1) % game.players.length];
   game.leadPlayerId = leader.id;
   game.turnPlayerId = leader.id;
@@ -81,6 +111,14 @@ export function dealRound(game: Game): void {
 
 export function finishRound(game: Game, winnerId: string, winningCard: Card): void {
   const winner = game.players.find((player) => player.id === winnerId)!;
+  if (game.mode === "finale") {
+    game.finalWinnerId = winnerId;
+    game.loserId = game.players.find((player) => player.active && player.id !== winnerId)?.id ?? null;
+    game.status = "finished";
+    game.turnPlayerId = null;
+    game.message = `${winner.name} wint de Koningstoep`;
+    return;
+  }
   for (const player of game.players) {
     if (player.active && !player.folded && player.id !== winnerId) player.score += game.roundValue;
   }
@@ -90,7 +128,7 @@ export function finishRound(game: Game, winnerId: string, winningCard: Card): vo
   } else {
     game.message = `${winner.name} wint de ronde`;
   }
-  const losers = game.players.filter((player) => player.active && player.score >= 15);
+  const losers = game.players.filter((player) => player.active && player.score >= game.targetScore);
   if (losers.length) {
     losers.forEach((player) => { player.active = false; });
     game.loserId = losers[0].id;

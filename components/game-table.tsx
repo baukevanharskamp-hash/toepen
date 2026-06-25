@@ -17,8 +17,12 @@ export function GameTable({
   const me = game.me!;
   const myTurn = game.turnPlayerId === me.id;
   const mustRespond = game.waitingForResponses.includes(me.id);
-  const canLaundry = game.laundryEnabled && !me.usedLaundry && hasDirtyLaundry({ ...me, token: "" });
+  const isDiscarding = game.status === "discarding";
+  const isFinale = game.mode === "finale";
+  const tricksThisRound = isFinale ? 8 : 4;
+  const canLaundry = game.status === "playing" && game.laundryEnabled && !me.usedLaundry && hasDirtyLaundry({ ...me, token: "" });
   const [handOrder, setHandOrder] = useState<string[]>([]);
+  const [discardIds, setDiscardIds] = useState<string[]>([]);
   const [draggingCardId, setDraggingCardId] = useState<string | null>(null);
   const [dropArmed, setDropArmed] = useState(false);
   const [confirmStop, setConfirmStop] = useState(false);
@@ -48,6 +52,10 @@ export function GameTable({
     ]);
   }, [me.hand]);
 
+  useEffect(() => {
+    setDiscardIds((current) => current.filter((id) => me.hand.some((card) => card.id === id)));
+  }, [me.hand]);
+
   function reorder(cardId: string, targetId: string) {
     if (cardId === targetId) return;
     setHandOrder((current) => {
@@ -59,7 +67,7 @@ export function GameTable({
   }
 
   async function finishDrag(clientY: number, card: Card) {
-    const legal = myTurn && game.legalCardIds.includes(card.id) && !game.waitingForResponses.length;
+    const legal = game.status === "playing" && myTurn && game.legalCardIds.includes(card.id) && !game.waitingForResponses.length;
     if (dropArmed && legal) {
       suppressNextClick.current = true;
       await act("play", { cardId: card.id });
@@ -69,13 +77,21 @@ export function GameTable({
     dragStart.current = null;
   }
 
+  function toggleDiscard(cardId: string) {
+    setDiscardIds((current) => {
+      if (current.includes(cardId)) return current.filter((id) => id !== cardId);
+      if (current.length >= 3) return current;
+      return [...current, cardId];
+    });
+  }
+
   return (
     <main className="felt mx-auto flex min-h-dvh max-w-md flex-col overflow-hidden border-x border-white/5">
       <header className="relative z-10 bg-ink/85 px-3 pb-3 pt-[max(.75rem,env(safe-area-inset-top))] backdrop-blur-xl">
         <div className="mb-2 flex items-center justify-between px-1">
           <div className="text-xs font-black tracking-widest">TOEP <span className="text-lime">SAMEN</span></div>
           <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-cream/35">
-            <span>Ronde {game.round}</span><span className="h-1 w-1 rounded-full bg-cream/20"/><span>Slag {game.trick}/4</span>
+            <span>{isFinale ? "Koningstoep" : `Ronde ${game.round}`}</span><span className="h-1 w-1 rounded-full bg-cream/20"/><span>Slag {game.trick}/{tricksThisRound}</span>
           </div>
         </div>
         <Scoreboard game={game} />
@@ -92,9 +108,9 @@ export function GameTable({
       <section className="relative flex min-h-0 flex-1 flex-col px-3 py-3">
         <div className="flex items-center justify-between">
           <div className={`rounded-full border px-3 py-2 text-xs font-black ${myTurn ? "pulse-turn border-lime/50 bg-lime/10 text-lime" : "border-white/10 bg-black/15 text-cream/65"}`}>
-            {myTurn ? "Jij bent aan de beurt" : game.message}
+            {isDiscarding && game.discardingPlayerIds.includes(me.id) ? "Kies 3 kaarten om weg te gooien" : myTurn ? "Jij bent aan de beurt" : game.message}
           </div>
-          <div className="rounded-full border border-amber/30 bg-amber/10 px-3 py-2 text-xs font-black text-amber">Waarde ×{game.roundValue}</div>
+          <div className="rounded-full border border-amber/30 bg-amber/10 px-3 py-2 text-xs font-black text-amber">{isFinale ? "Om de winst" : `Waarde ×${game.roundValue}`}</div>
         </div>
 
         <div className="mt-3 flex justify-center gap-5">
@@ -164,7 +180,7 @@ export function GameTable({
 
         <div className="wood-tray relative rounded-t-[28px] border border-amber/30 px-3 pb-[calc(.65rem+var(--safe-bottom))] pt-3 shadow-[0_-18px_38px_rgba(0,0,0,.24)]">
           <div className="mb-2 flex items-end justify-between px-1">
-            <div><div className="text-[10px] font-black uppercase tracking-wider text-cream/70">Jouw hand</div><div className="text-xs font-bold text-cream/80">{myTurn ? "Tik een kaart om te spelen" : "Niet op tafel, nog in je hand"}</div></div>
+            <div><div className="text-[10px] font-black uppercase tracking-wider text-cream/70">Jouw hand</div><div className="text-xs font-bold text-cream/80">{isDiscarding ? `${discardIds.length}/3 gekozen` : myTurn ? "Tik een kaart om te spelen" : "Niet op tafel, nog in je hand"}</div></div>
             <div className="flex items-center gap-2">
               {canLaundry && <button onClick={() => act("laundry")} className="rounded-full bg-amber px-3 py-2 text-[10px] font-black text-ink">Vuile was openen</button>}
               <button onClick={() => setSoundVolume(soundVolume > 0 ? 0 : 0.75)} className="rounded-full border border-white/20 bg-black/15 px-3 py-2 text-[10px] font-black text-cream">
@@ -172,6 +188,29 @@ export function GameTable({
               </button>
             </div>
           </div>
+          {isDiscarding && (
+            <div className="mb-2 rounded-2xl border border-lime/25 bg-lime/10 p-3">
+              <div className="text-[10px] font-black uppercase tracking-[.2em] text-lime">Koningstoep voorbereiding</div>
+              <div className="mt-1 text-sm font-bold text-cream/80">
+                Iedereen kreeg 11 kaarten. Gooi er 3 weg; daarna begint de winnaar van de dobbelsteen.
+              </div>
+              {!!game.starterRolls.length && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {game.starterRolls.map((roll, index) => {
+                    const player = game.players.find((item) => item.id === roll.playerId);
+                    return <span key={`${roll.playerId}-${index}`} className="rounded-full bg-black/20 px-2 py-1 text-[10px] font-black text-cream/60">{player?.name}: ⚂ {roll.roll}</span>;
+                  })}
+                </div>
+              )}
+              {game.discardingPlayerIds.includes(me.id) ? (
+                <Button className="mt-3 min-h-11 w-full" disabled={discardIds.length !== 3} onClick={() => act("discard", { cardIds: discardIds })}>
+                  3 kaarten weggooien
+                </Button>
+              ) : (
+                <div className="mt-3 rounded-xl bg-black/15 p-3 text-xs font-bold text-cream/55">Jij bent klaar. Wachten op de ander.</div>
+              )}
+            </div>
+          )}
           {mustRespond && (
             <div className="mb-2 rounded-2xl border border-amber/35 bg-amber/15 p-3">
               <div className="text-[10px] font-black uppercase tracking-[.2em] text-amber">Er is getoept</div>
@@ -191,7 +230,8 @@ export function GameTable({
           <div className="rounded-[22px] border border-black/25 bg-black/15 px-2 py-3 shadow-inner">
             <div className="flex min-h-[132px] items-end justify-center -space-x-2 overflow-visible">
               {orderedHand.map((card, index) => {
-                const disabled = !myTurn || !game.legalCardIds.includes(card.id) || !!game.waitingForResponses.length;
+                const selectedForDiscard = discardIds.includes(card.id);
+                const disabled = !isDiscarding && (!myTurn || !game.legalCardIds.includes(card.id) || !!game.waitingForResponses.length);
                 return (
                   <div key={card.id}
                     draggable
@@ -214,10 +254,14 @@ export function GameTable({
                       setDropArmed(dragStart.current.y - event.clientY > 86);
                     }}
                     onPointerUp={(event) => void finishDrag(event.clientY, card)}
-                    className={`${draggingCardId === card.id ? "z-20 scale-105" : "z-10"} touch-none transition`}>
+                    className={`${draggingCardId === card.id ? "z-20 scale-105" : "z-10"} ${selectedForDiscard ? "rounded-xl ring-4 ring-[#e86c5d]" : ""} touch-none transition`}>
                     <PlayingCard card={card} delay={index * 55}
                       disabled={disabled}
                       onClick={() => {
+                        if (isDiscarding) {
+                          toggleDiscard(card.id);
+                          return;
+                        }
                         if (suppressNextClick.current) {
                           suppressNextClick.current = false;
                           return;
@@ -237,7 +281,7 @@ export function GameTable({
         </div>
       </section>
 
-      {!mustRespond && !game.waitingForResponses.length && game.status === "playing" && (
+      {!isFinale && !mustRespond && !game.waitingForResponses.length && game.status === "playing" && (
         <button onClick={() => act("toep")} className="fixed bottom-[calc(184px+var(--safe-bottom))] right-[max(1rem,calc((100vw-28rem)/2+1rem))] z-20 grid h-14 w-14 rotate-3 place-items-center rounded-full border-4 border-ink bg-amber text-sm font-black text-ink shadow-xl active:scale-95">
           TOEP
         </button>

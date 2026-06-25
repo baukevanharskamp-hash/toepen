@@ -8,6 +8,7 @@ export function Lobby({ game, act }: { game: PublicGame; act: (type: string) => 
   const me = game.me!;
   const isHost = me.id === game.hostId;
   const joinUrl = typeof window === "undefined" ? "" : `${window.location.origin}/?spel=${game.code}`;
+  const modeLabel = game.mode === "quick" ? "Snel potje tot 5" : game.mode === "finale" ? "Finale: Koningstoep" : "Normaal tot 15";
 
   async function share() {
     const text = `Doe mee met ons potje Toepen. Code: ${game.code}`;
@@ -22,6 +23,11 @@ export function Lobby({ game, act }: { game: PublicGame; act: (type: string) => 
         <div className="flex items-center justify-between">
           <div><div className="text-[10px] font-black uppercase tracking-[.2em] text-cream/35">Spelcode</div><div className="mt-1 text-4xl font-black tracking-[.16em] text-lime">{game.code}</div></div>
           <div className="rounded-2xl bg-cream p-2"><QRCodeSVG value={joinUrl} size={72} bgColor="#f6efd9" fgColor="#11130f" /></div>
+        </div>
+        <div className="mt-4 rounded-2xl border border-white/10 bg-white/[.04] p-3">
+          <div className="text-[10px] font-black uppercase tracking-[.18em] text-cream/35">Speltype</div>
+          <div className="mt-1 text-sm font-black">{modeLabel}</div>
+          {game.mode === "finale" && <div className="mt-1 text-xs font-bold text-amber/75">11 kaarten, 3 weggooien, dobbelsteen bepaalt wie begint.</div>}
         </div>
         <Button variant="ghost" className="mt-4 min-h-12 w-full" onClick={share}>Deel uitnodiging</Button>
       </section>
@@ -43,10 +49,12 @@ export function Lobby({ game, act }: { game: PublicGame; act: (type: string) => 
           ))}
         </div>
       </section>
-      <section className="my-6 rounded-2xl border border-amber/20 bg-amber/[.07] p-4">
-        <div className="text-[10px] font-black uppercase tracking-[.18em] text-amber">Opdracht voor de verliezer</div>
-        <div className="mt-2 text-lg font-black leading-snug">“{game.task}”</div>
-      </section>
+      {game.task && (
+        <section className="my-6 rounded-2xl border border-amber/20 bg-amber/[.07] p-4">
+          <div className="text-[10px] font-black uppercase tracking-[.18em] text-amber">{game.mode === "finale" ? "Inzet" : "Opdracht voor de verliezer"}</div>
+          <div className="mt-2 text-lg font-black leading-snug">“{game.task}”</div>
+        </section>
+      )}
       <div className="sticky bottom-4 grid gap-2">
         <Button variant={me.ready ? "ghost" : "primary"} onClick={() => act("ready")}>{me.ready ? "Toch niet klaar" : "Ik ben klaar"}</Button>
         {isHost && <Button variant="secondary" disabled={game.players.length < 2 || !game.players.every((player) => player.ready)} onClick={() => act("start")}>Potje starten</Button>}

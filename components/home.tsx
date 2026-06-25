@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { AvatarPicker, Button, Field, Logo, avatars } from "./ui";
+import { GameMode } from "@/lib/types";
 
 type View = "home" | "create" | "join";
 
@@ -12,6 +13,7 @@ export function Home({ initialCode, onEnter }: { initialCode?: string; onEnter: 
   const [code, setCode] = useState(initialCode ?? "");
   const [task, setTask] = useState("");
   const [maxPlayers, setMaxPlayers] = useState<2 | 3 | 4>(4);
+  const [mode, setMode] = useState<GameMode>("normal");
   const [stopAtFirstLoser, setStopAtFirstLoser] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -21,7 +23,7 @@ export function Home({ initialCode, onEnter }: { initialCode?: string; onEnter: 
     try {
       const response = await fetch("/api/games", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, avatar, task, maxPlayers, stopAtFirstLoser }),
+        body: JSON.stringify({ name, avatar, task, maxPlayers, mode, stopAtFirstLoser }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
@@ -90,22 +92,43 @@ export function Home({ initialCode, onEnter }: { initialCode?: string; onEnter: 
         </label>
         {isCreate ? <>
           <label className="grid gap-2 text-xs font-black uppercase tracking-wider text-cream/50">
-            Aantal spelers
-            <div className="grid grid-cols-3 gap-2">
-              {[2, 3, 4].map((amount) => <button type="button" key={amount} onClick={() => setMaxPlayers(amount as 2 | 3 | 4)}
-                className={`h-14 rounded-2xl text-lg font-black ${maxPlayers === amount ? "bg-lime text-ink" : "bg-white/[.06]"}`}>{amount}</button>)}
+            Speltype
+            <div className="grid gap-2">
+              {[
+                { value: "normal", title: "Normaal", text: "Tot 15 punten" },
+                { value: "quick", title: "Snel potje", text: "Tot 5 punten" },
+                { value: "finale", title: "Finale", text: "Koningstoep: 11 kaarten, 3 weg" },
+              ].map((option) => (
+                <button type="button" key={option.value} onClick={() => {
+                  setMode(option.value as GameMode);
+                  if (option.value === "finale") setMaxPlayers(2);
+                }}
+                  className={`rounded-2xl border p-4 text-left transition ${mode === option.value ? "border-lime bg-lime/10" : "border-white/10 bg-white/[.04]"}`}>
+                  <div className="text-sm font-black text-cream">{option.title}</div>
+                  <div className="mt-1 text-xs font-bold normal-case text-cream/40">{option.text}</div>
+                </button>
+              ))}
             </div>
           </label>
           <label className="grid gap-2 text-xs font-black uppercase tracking-wider text-cream/50">
-            Opdracht voor de verliezer
-            <textarea value={task} onChange={(event) => setTask(event.target.value)} required maxLength={140}
-              placeholder="Bijv. de volgende ronde drankjes halen"
+            Aantal spelers
+            <div className="grid grid-cols-3 gap-2">
+              {[2, 3, 4].map((amount) => <button type="button" key={amount} onClick={() => setMaxPlayers(amount as 2 | 3 | 4)}
+                disabled={mode === "finale" && amount !== 2}
+                className={`h-14 rounded-2xl text-lg font-black disabled:opacity-25 ${maxPlayers === amount ? "bg-lime text-ink" : "bg-white/[.06]"}`}>{amount}</button>)}
+            </div>
+            {mode === "finale" && <span className="text-xs font-bold normal-case text-amber/80">Koningstoep is met 2 spelers, omdat 11 kaarten per persoon anders niet uit het deck past.</span>}
+          </label>
+          <label className="grid gap-2 text-xs font-black uppercase tracking-wider text-cream/50">
+            {mode === "finale" ? "Prijs of opdracht (optioneel)" : "Opdracht voor de verliezer"}
+            <textarea value={task} onChange={(event) => setTask(event.target.value)} required={mode !== "finale"} maxLength={140}
+              placeholder={mode === "finale" ? "Bijv. winnaar kiest de volgende ronde" : "Bijv. de volgende ronde drankjes halen"}
               className="min-h-24 resize-none rounded-2xl border border-cream/10 bg-white/[.06] p-4 font-bold normal-case text-cream outline-none placeholder:text-cream/25 focus:border-lime/60" />
           </label>
-          <button type="button" onClick={() => setStopAtFirstLoser(!stopAtFirstLoser)} className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[.04] p-4 text-left">
+          {mode !== "finale" && <button type="button" onClick={() => setStopAtFirstLoser(!stopAtFirstLoser)} className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[.04] p-4 text-left">
             <div><div className="text-sm font-black">Stop bij eerste verliezer</div><div className="mt-1 text-xs text-cream/40">Of speel door tot één winnaar</div></div>
             <span className={`h-7 w-12 rounded-full p-1 transition ${stopAtFirstLoser ? "bg-lime" : "bg-white/10"}`}><span className={`block h-5 w-5 rounded-full bg-ink transition ${stopAtFirstLoser ? "translate-x-5" : ""}`} /></span>
-          </button>
+          </button>}
         </> : (
           <label className="grid gap-2 text-xs font-black uppercase tracking-wider text-cream/50">
             Spelcode

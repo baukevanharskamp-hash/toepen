@@ -4,6 +4,7 @@ export type Suit = (typeof SUITS)[number];
 export type Rank = (typeof RANKS)[number];
 
 export type Card = { id: string; suit: Suit; rank: Rank };
+export type GameMode = "normal" | "quick" | "finale";
 export type Player = {
   id: string;
   token: string;
@@ -17,13 +18,16 @@ export type Player = {
   usedLaundry: boolean;
 };
 export type PlayedCard = { playerId: string; card: Card };
-export type GameStatus = "lobby" | "playing" | "finished" | "cancelled";
+export type GameStatus = "lobby" | "discarding" | "playing" | "finished" | "cancelled";
+export type StarterRoll = { playerId: string; roll: number };
 export type Game = {
   code: string;
   createdAt: number;
   status: GameStatus;
   hostId: string;
   maxPlayers: 2 | 3 | 4;
+  mode: GameMode;
+  targetScore: number;
   task: string;
   stopAtFirstLoser: boolean;
   laundryEnabled: boolean;
@@ -39,9 +43,12 @@ export type Game = {
   completedTricks: PlayedCard[][];
   lastTrick: PlayedCard[];
   waitingForResponses: string[];
+  discardingPlayerIds: string[];
+  starterRolls: StarterRoll[];
   toepCallerId: string | null;
   message: string;
   loserId: string | null;
+  finalWinnerId: string | null;
 };
 
 export type PublicPlayer = Omit<Player, "token" | "hand"> & { cardCount: number };
