@@ -20,6 +20,7 @@ export type Player = {
 export type PlayedCard = { playerId: string; card: Card };
 export type GameStatus = "lobby" | "discarding" | "playing" | "finished" | "cancelled";
 export type StarterRoll = { playerId: string; roll: number };
+export type ToepResponse = { playerId: string; choice: "stay" | "fold"; round: number; roundValue: number };
 export type Game = {
   code: string;
   createdAt: number;
@@ -46,6 +47,8 @@ export type Game = {
   discardingPlayerIds: string[];
   starterRolls: StarterRoll[];
   toepCallerId: string | null;
+  lastToepCallerId: string | null;
+  toepResponses: ToepResponse[];
   message: string;
   loserId: string | null;
   finalWinnerId: string | null;

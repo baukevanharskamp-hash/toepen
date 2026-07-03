@@ -8,8 +8,15 @@ global.toepGames = games;
 
 const avatars = ["🍺", "🃏", "🎯", "🍟", "🎱", "🎸", "⚡", "🥨"];
 const code = () => Math.random().toString(36).slice(2, 6).toUpperCase();
+const fallbackAvatar = () => avatars[Math.floor(Math.random() * avatars.length)];
+const cleanAvatar = (avatar?: string) => {
+  if (!avatar) return fallbackAvatar();
+  if (avatars.includes(avatar)) return avatar;
+  if (avatar.length < 180_000 && /^data:image\/(jpeg|png|webp);base64,/.test(avatar)) return avatar;
+  return fallbackAvatar();
+};
 const player = (name: string, avatar?: string): Player => ({
-  id: randomUUID(), token: randomUUID(), name, avatar: avatar || avatars[Math.floor(Math.random() * avatars.length)],
+  id: randomUUID(), token: randomUUID(), name, avatar: cleanAvatar(avatar),
   score: 0, ready: false, active: true, folded: false, hand: [], usedLaundry: false,
 });
 
@@ -28,7 +35,7 @@ export function createGame(input: {
     laundryEnabled: true, jackBonusEnabled: true, players: [host], round: 0, roundValue: 1,
     trick: 0, dealerIndex: 0, turnPlayerId: null, leadPlayerId: null, trickCards: [], completedTricks: [],
     lastTrick: [], waitingForResponses: [], discardingPlayerIds: [], starterRolls: [],
-    toepCallerId: null, message: "Wachten op spelers", loserId: null, finalWinnerId: null,
+    toepCallerId: null, lastToepCallerId: null, toepResponses: [], message: "Wachten op spelers", loserId: null, finalWinnerId: null,
   };
   games.set(gameCode, game);
   return { game, token: host.token };
@@ -49,6 +56,14 @@ function me(game: Game, token: string): Player {
   const found = game.players.find((p) => p.token === token);
   if (!found) throw new Error("Je spelerssessie is niet geldig.");
   return found;
+}
+
+function toepResponseQueue(game: Game, callerId: string): string[] {
+  const start = game.players.findIndex((player) => player.id === callerId);
+  if (start < 0) return [];
+  return Array.from({ length: game.players.length - 1 }, (_, step) => game.players[(start + step + 1) % game.players.length])
+    .filter((player) => player.active && !player.folded)
+    .map((player) => player.id);
 }
 
 export function action(game: Game, token: string, type: string, payload: Record<string, unknown> = {}) {
@@ -125,24 +140,33 @@ export function action(game: Game, token: string, type: string, payload: Record<
   }
   if (type === "toep") {
     if (game.mode === "finale") throw new Error("Koningstoep speelt al direct om de winst.");
+    if (!actor.active || actor.folded) throw new Error("Je kunt niet toepen als je niet meer meedoet in deze ronde.");
+    if (game.lastToepCallerId === actor.id) throw new Error("Je kunt niet over jezelf heen toepen.");
     if (game.toepCallerId) throw new Error("Er loopt al een Toep.");
     game.roundValue += 1;
     game.toepCallerId = actor.id;
-    game.waitingForResponses = game.players.filter((p) => p.active && !p.folded && p.id !== actor.id).map((p) => p.id);
+    game.lastToepCallerId = actor.id;
+    game.waitingForResponses = toepResponseQueue(game, actor.id);
     game.message = `${actor.name} heeft getoept`;
     return;
   }
   if (type === "respond") {
-    if (!game.waitingForResponses.includes(actor.id)) throw new Error("Je hoeft niet te reageren.");
+    if (game.waitingForResponses[0] !== actor.id) throw new Error("Jij bent nog niet aan de beurt om te reageren.");
     game.waitingForResponses = game.waitingForResponses.filter((id) => id !== actor.id);
     if (payload.choice === "fold") {
       actor.folded = true;
       actor.score += Math.max(1, game.roundValue - 1);
+      game.toepResponses.push({ playerId: actor.id, choice: "fold", round: game.round, roundValue: game.roundValue });
       game.message = `${actor.name} past`;
     } else {
+      game.toepResponses.push({ playerId: actor.id, choice: "stay", round: game.round, roundValue: game.roundValue });
       game.message = `${actor.name} gaat mee`;
     }
-    if (!game.waitingForResponses.length) game.toepCallerId = null;
+    if (!game.waitingForResponses.length) {
+      game.toepCallerId = null;
+      const player = game.players.find((item) => item.id === game.turnPlayerId);
+      game.message = `${player?.name ?? "De speler die aan zet was"} is weer aan zet`;
+    }
     return;
   }
   if (type === "laundry") {

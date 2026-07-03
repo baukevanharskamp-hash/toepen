@@ -3,23 +3,26 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { hasDirtyLaundry } from "@/lib/game";
 import { Card, PublicGame } from "@/lib/types";
-import { Button, PlayingCard, Scoreboard, TinyCardBacks } from "./ui";
+import { Button, PlayerAvatar, PlayingCard, Scoreboard, TinyCardBacks } from "./ui";
 
 export function GameTable({
-  game, act, onStop, soundVolume, setSoundVolume,
+  game, act, onStop, onLeave, soundVolume, setSoundVolume,
 }: {
   game: PublicGame;
   act: (type: string, payload?: Record<string, unknown>) => Promise<void>;
   onStop: () => void;
+  onLeave: () => void;
   soundVolume: number;
   setSoundVolume: (value: number) => void;
 }) {
   const me = game.me!;
   const myTurn = game.turnPlayerId === me.id;
-  const mustRespond = game.waitingForResponses.includes(me.id);
+  const mustRespond = game.waitingForResponses[0] === me.id;
+  const waitingToRespond = !mustRespond && game.waitingForResponses.includes(me.id);
   const isDiscarding = game.status === "discarding";
   const isFinale = game.mode === "finale";
   const tricksThisRound = isFinale ? 8 : 4;
+  const canToep = game.status === "playing" && !isFinale && me.active && !me.folded && game.lastToepCallerId !== me.id && !mustRespond && !game.waitingForResponses.length;
   const canLaundry = game.status === "playing" && game.laundryEnabled && !me.usedLaundry && hasDirtyLaundry({ ...me, token: "" });
   const [handOrder, setHandOrder] = useState<string[]>([]);
   const [discardIds, setDiscardIds] = useState<string[]>([]);
@@ -33,6 +36,7 @@ export function GameTable({
     player.id,
     playedCards.filter((play) => play.playerId === player.id),
   ]));
+  const latestToepResponseByPlayer = new Map(game.toepResponses.map((response) => [response.playerId, response]));
   const tablePlayers = [
     ...game.players.filter((player) => player.id !== me.id),
     game.players.find((player) => player.id === me.id)!,
@@ -95,7 +99,11 @@ export function GameTable({
           </div>
         </div>
         <Scoreboard game={game} />
-        <div className="mt-2 flex justify-end">
+        <div className="mt-2 flex justify-end gap-2">
+          <button onClick={onLeave}
+            className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-cream/65">
+            Verlaten
+          </button>
           {me.id === game.hostId && (
             <button onClick={() => setConfirmStop(true)}
               className="rounded-full border border-[#e86c5d]/30 bg-[#e86c5d]/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-[#ff9d91]">
@@ -114,13 +122,20 @@ export function GameTable({
         </div>
 
         <div className="mt-3 flex justify-center gap-5">
-          {game.players.filter((player) => player.id !== me.id).map((player) => (
-            <div key={player.id} className={`flex flex-col items-center gap-1 ${player.folded ? "opacity-25" : ""}`}>
-              <div className={`grid h-10 w-10 place-items-center rounded-full border text-lg ${game.turnPlayerId === player.id ? "border-lime bg-lime/10" : "border-white/10 bg-black/20"}`}>{player.avatar}</div>
-              <span className="max-w-20 truncate text-[10px] font-black">{player.name}</span>
-              <TinyCardBacks count={player.cardCount} />
-            </div>
-          ))}
+          {game.players.filter((player) => player.id !== me.id).map((player) => {
+            const response = latestToepResponseByPlayer.get(player.id);
+            const status = player.folded ? "Past" : response?.choice === "stay" ? "Mee" : "In";
+            return (
+              <div key={player.id} className={`flex flex-col items-center gap-1 ${player.folded ? "opacity-35" : ""}`}>
+                <div className={`grid h-12 w-12 place-items-center rounded-full border ${game.turnPlayerId === player.id ? "border-lime bg-lime/10" : player.folded ? "border-[#e86c5d]/40 bg-[#e86c5d]/10" : "border-white/10 bg-black/20"}`}>
+                  <PlayerAvatar avatar={player.avatar} size="sm" />
+                </div>
+                <span className="max-w-20 truncate text-[10px] font-black">{player.name}</span>
+                <span className={`rounded-full px-2 py-0.5 text-[8px] font-black uppercase ${player.folded ? "bg-[#e86c5d]/15 text-[#ff9d91]" : response?.choice === "stay" ? "bg-lime/15 text-lime" : "bg-white/[.06] text-cream/35"}`}>{status}</span>
+                <TinyCardBacks count={player.cardCount} />
+              </div>
+            );
+          })}
         </div>
 
         <div className="relative my-3 flex min-h-[220px] flex-1 items-center justify-center">
@@ -143,6 +158,23 @@ export function GameTable({
                 const stack = playedByPlayer.get(player.id) ?? [];
                 const isMe = player.id === me.id;
                 const isTurn = game.turnPlayerId === player.id;
+                const toepResponse = latestToepResponseByPlayer.get(player.id);
+                const responseLabel = player.folded
+                  ? "Past"
+                  : game.waitingForResponses[0] === player.id
+                    ? "Reageert"
+                    : game.waitingForResponses.includes(player.id)
+                      ? "Wacht"
+                      : toepResponse?.choice === "stay"
+                        ? "Mee"
+                        : "In de ronde";
+                const responseClass = player.folded
+                  ? "border-[#e86c5d]/40 bg-[#e86c5d]/15 text-[#ff9d91]"
+                  : game.waitingForResponses[0] === player.id
+                    ? "border-amber/50 bg-amber/15 text-amber"
+                    : toepResponse?.choice === "stay"
+                      ? "border-lime/45 bg-lime/15 text-lime"
+                      : "border-white/10 bg-white/[.05] text-cream/38";
                 return (
                   <div key={player.id}
                     className={`relative min-h-[106px] rounded-[24px] border bg-black/[.10] p-2 transition ${
@@ -151,8 +183,11 @@ export function GameTable({
                       isTurn ? "border-lime/35 shadow-[0_0_0_1px_rgba(201,241,74,.08)]" : "border-white/[.07]"
                     }`}>
                     <div className={`mb-1 flex items-center justify-center gap-1.5 text-[9px] font-black uppercase tracking-[.14em] ${isTurn ? "text-lime" : "text-cream/38"}`}>
-                      <span>{player.avatar}</span>
+                      <PlayerAvatar avatar={player.avatar} size="xs" />
                       <span className="max-w-20 truncate">{isMe ? "Jij" : player.name}</span>
+                    </div>
+                    <div className={`mx-auto mb-1 w-fit rounded-full border px-2 py-0.5 text-[8px] font-black uppercase tracking-[.14em] ${responseClass}`}>
+                      {responseLabel}
                     </div>
                     <div className="flex min-h-[76px] items-center justify-center -space-x-7">
                       {stack.length ? stack.map((play, index) => (
@@ -183,7 +218,7 @@ export function GameTable({
             <div><div className="text-[10px] font-black uppercase tracking-wider text-cream/70">Jouw hand</div><div className="text-xs font-bold text-cream/80">{isDiscarding ? `${discardIds.length}/3 gekozen` : myTurn ? "Tik een kaart om te spelen" : "Niet op tafel, nog in je hand"}</div></div>
             <div className="flex items-center gap-2">
               {canLaundry && <button onClick={() => act("laundry")} className="rounded-full bg-amber px-3 py-2 text-[10px] font-black text-ink">Vuile was openen</button>}
-              <button onClick={() => setSoundVolume(soundVolume > 0 ? 0 : 0.75)} className="rounded-full border border-white/20 bg-black/15 px-3 py-2 text-[10px] font-black text-cream">
+              <button onClick={() => setSoundVolume(soundVolume > 0 ? 0 : 1)} className="rounded-full border border-white/20 bg-black/15 px-3 py-2 text-[10px] font-black text-cream">
                 {soundVolume > 0 ? "Geluid" : "Stil"}
               </button>
             </div>
@@ -219,6 +254,12 @@ export function GameTable({
                 <Button variant="ghost" className="min-h-11" onClick={() => act("respond", { choice: "fold" })}>Passen</Button>
                 <Button className="min-h-11" onClick={() => act("respond", { choice: "stay" })}>Meegaan</Button>
               </div>
+            </div>
+          )}
+          {waitingToRespond && (
+            <div className="mb-2 rounded-2xl border border-white/10 bg-white/[.04] p-3">
+              <div className="text-[10px] font-black uppercase tracking-[.2em] text-cream/35">Er is getoept</div>
+              <div className="mt-1 text-sm font-bold text-cream/65">Je bent zo aan de beurt om te kiezen. Eerst reageert de speler linksom van de toepper.</div>
             </div>
           )}
           <label className="mb-2 flex items-center gap-2 px-1 text-[10px] font-black uppercase tracking-wider text-cream/55">
@@ -281,7 +322,7 @@ export function GameTable({
         </div>
       </section>
 
-      {!isFinale && !mustRespond && !game.waitingForResponses.length && game.status === "playing" && (
+      {canToep && (
         <button onClick={() => act("toep")} className="fixed bottom-[calc(184px+var(--safe-bottom))] right-[max(1rem,calc((100vw-28rem)/2+1rem))] z-20 grid h-14 w-14 rotate-3 place-items-center rounded-full border-4 border-ink bg-amber text-sm font-black text-ink shadow-xl active:scale-95">
           TOEP
         </button>

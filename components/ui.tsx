@@ -3,6 +3,7 @@
 import { Card as CardType, PublicGame, PublicPlayer } from "@/lib/types";
 
 export const avatars = ["🍺", "🃏", "🎯", "🍟", "🎱", "🎸", "⚡", "🥨"];
+const isPhotoAvatar = (avatar: string) => avatar.startsWith("data:image/");
 
 export function Logo({ small = false }: { small?: boolean }) {
   return (
@@ -42,15 +43,90 @@ export function Field(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={`h-14 w-full rounded-2xl border border-cream/10 bg-white/[.06] px-4 font-bold text-cream outline-none placeholder:text-cream/30 focus:border-lime/60 ${props.className ?? ""}`} />;
 }
 
-export function AvatarPicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+function resizeAvatar(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Foto lezen lukte niet."));
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = () => reject(new Error("Foto laden lukte niet."));
+      image.onload = () => {
+        const size = 280;
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+        const context = canvas.getContext("2d");
+        if (!context) {
+          reject(new Error("Foto verwerken lukte niet."));
+          return;
+        }
+        const sourceSize = Math.min(image.width, image.height);
+        const sourceX = (image.width - sourceSize) / 2;
+        const sourceY = (image.height - sourceSize) / 2;
+        context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 0, 0, size, size);
+        resolve(canvas.toDataURL("image/jpeg", 0.78));
+      };
+      image.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+export function PlayerAvatar({
+  avatar, size = "md", className = "",
+}: { avatar: string; size?: "xs" | "sm" | "md" | "lg"; className?: string }) {
+  const sizes = {
+    xs: "h-7 w-7 text-base",
+    sm: "h-10 w-10 text-xl",
+    md: "h-14 w-14 text-3xl",
+    lg: "h-24 w-24 text-5xl",
+  };
+  if (!isPhotoAvatar(avatar)) {
+    return (
+      <span className={`grid shrink-0 place-items-center rounded-full border border-white/10 bg-black/15 ${sizes[size]} ${className}`}>
+        {avatar}
+      </span>
+    );
+  }
   return (
-    <div className="grid grid-cols-8 gap-1.5">
-      {avatars.map((avatar) => (
-        <button key={avatar} type="button" onClick={() => onChange(avatar)}
-          className={`aspect-square rounded-xl text-xl transition ${value === avatar ? "scale-105 bg-lime text-ink" : "bg-white/[.06]"}`}>
-          {avatar}
-        </button>
-      ))}
+    <span className={`relative inline-block shrink-0 ${sizes[size]} ${className}`}>
+      <span className="absolute bottom-0 left-1/2 h-[48%] w-[72%] -translate-x-1/2 rounded-t-full border border-lime/25 bg-lime shadow-[0_5px_0_rgba(0,0,0,.18)]" />
+      <span className="absolute bottom-[20%] left-[18%] h-[18%] w-[16%] -rotate-12 rounded-full bg-amber" />
+      <span className="absolute bottom-[20%] right-[18%] h-[18%] w-[16%] rotate-12 rounded-full bg-amber" />
+      <img src={avatar} alt="Profielfoto" className="absolute left-1/2 top-0 h-[72%] w-[72%] -translate-x-1/2 rounded-full border-2 border-cream object-cover shadow-card" />
+    </span>
+  );
+}
+
+export function AvatarPicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  async function upload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    onChange(await resizeAvatar(file));
+    event.target.value = "";
+  }
+
+  return (
+    <div className="grid gap-3">
+      <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[.04] p-3">
+        <PlayerAvatar avatar={value} size="lg" />
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-black text-cream">Jouw poppetje</div>
+          <div className="mt-1 text-xs font-bold normal-case leading-5 text-cream/45">Upload een foto en we zetten je hoofd op een klein Toep-lijfje.</div>
+          <label className="mt-3 inline-flex cursor-pointer rounded-full bg-lime px-3 py-2 text-[10px] font-black uppercase tracking-wider text-ink">
+            Foto uploaden
+            <input type="file" accept="image/*" onChange={upload} className="sr-only" />
+          </label>
+        </div>
+      </div>
+      <div className="grid grid-cols-8 gap-1.5">
+        {avatars.map((avatar) => (
+          <button key={avatar} type="button" onClick={() => onChange(avatar)}
+            className={`aspect-square rounded-xl transition ${value === avatar ? "scale-105 bg-lime text-ink" : "bg-white/[.06]"}`}>
+            <PlayerAvatar avatar={avatar} size="xs" className="mx-auto" />
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -84,7 +160,7 @@ export function Scoreboard({ game }: { game: PublicGame }) {
           game.turnPlayerId === player.id ? "border-lime/70 bg-lime/10" : "border-white/10 bg-black/15"
         } ${!player.active ? "opacity-40" : ""}`}>
           <div className="flex items-center gap-1.5">
-            <span>{player.avatar}</span>
+            <PlayerAvatar avatar={player.avatar} size="xs" />
             <span className="truncate text-xs font-bold">{player.name}</span>
           </div>
           <div className="mt-1 flex items-end justify-between">
@@ -100,7 +176,7 @@ export function Scoreboard({ game }: { game: PublicGame }) {
 export function PlayerChip({ player, active }: { player: PublicPlayer; active?: boolean }) {
   return (
     <div className={`flex items-center gap-2 rounded-full border px-3 py-2 ${active ? "border-lime/60 bg-lime/10" : "border-white/10 bg-black/15"}`}>
-      <span>{player.avatar}</span>
+      <PlayerAvatar avatar={player.avatar} size="xs" />
       <span className="max-w-24 truncate text-xs font-bold">{player.name}</span>
       {active && <span className="h-1.5 w-1.5 rounded-full bg-lime" />}
     </div>

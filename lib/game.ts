@@ -92,6 +92,8 @@ export function dealRound(game: Game): void {
   game.discardingPlayerIds = [];
   game.starterRolls = [];
   game.toepCallerId = null;
+  game.lastToepCallerId = null;
+  game.toepResponses = [];
   const activePlayers = game.players.filter((player) => player.active);
   if (game.mode === "finale") {
     const roll = rollStarter(activePlayers);

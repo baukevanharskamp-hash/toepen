@@ -5,7 +5,7 @@ import { EndScreen } from "@/components/end-screen";
 import { GameTable } from "@/components/game-table";
 import { Home } from "@/components/home";
 import { Lobby } from "@/components/lobby";
-import { playSound } from "@/lib/sounds";
+import { playSound, unlockSound } from "@/lib/sounds";
 import { PublicGame } from "@/lib/types";
 
 export default function Page() {
@@ -14,7 +14,7 @@ export default function Page() {
   const [game, setGame] = useState<PublicGame | null>(null);
   const [error, setError] = useState("");
   const [hydrated, setHydrated] = useState(false);
-  const [soundVolume, setSoundVolume] = useState(0.75);
+  const [soundVolume, setSoundVolume] = useState(1);
   const [lastEventKey, setLastEventKey] = useState("");
   const initialCode = hydrated ? new URLSearchParams(window.location.search).get("spel") ?? "" : "";
 
@@ -39,11 +39,20 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
+    const urlCode = new URLSearchParams(window.location.search).get("spel") ?? "";
     const savedCode = localStorage.getItem("toep-code") ?? "";
     const savedToken = localStorage.getItem("toep-token") ?? "";
     const savedVolume = localStorage.getItem("toep-sound-volume");
     setHydrated(true);
     if (savedVolume !== null) setSoundVolume(Number(savedVolume));
+    if (urlCode && urlCode !== savedCode) {
+      localStorage.removeItem("toep-code");
+      localStorage.removeItem("toep-token");
+      setCode("");
+      setToken("");
+      setGame(null);
+      return;
+    }
     if (savedCode && savedToken) {
       setCode(savedCode); setToken(savedToken);
       load(savedCode, savedToken).catch(() => {});
@@ -51,10 +60,32 @@ export default function Page() {
   }, [load]);
 
   useEffect(() => {
+    function unlock() { unlockSound(); }
+    window.addEventListener("pointerdown", unlock, { once: true });
+    window.addEventListener("touchstart", unlock, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("touchstart", unlock);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated || !initialCode || !game || initialCode === game.code) return;
+    localStorage.removeItem("toep-code");
+    localStorage.removeItem("toep-token");
+    setGame(null);
+    setCode("");
+    setToken("");
+  }, [hydrated, initialCode, game]);
+
+  useEffect(() => {
     if (!game?.me || game.status !== "playing") return;
     const currentCard = game.trickCards.at(-1);
+    const currentResponse = game.toepResponses.at(-1);
     const eventKey = currentCard
       ? `card:${game.round}:${game.trick}:${currentCard.playerId}:${currentCard.card.id}`
+      : currentResponse
+        ? `respond:${currentResponse.round}:${currentResponse.roundValue}:${currentResponse.playerId}:${currentResponse.choice}`
       : game.toepCallerId
         ? `toep:${game.round}:${game.roundValue}:${game.toepCallerId}`
         : game.message.includes("wint de ronde") || game.message.includes("wint met een boer")
@@ -63,6 +94,7 @@ export default function Page() {
     if (!eventKey || eventKey === lastEventKey) return;
     setLastEventKey(eventKey);
     if (eventKey.startsWith("card:")) playSound("card", soundVolume);
+    if (eventKey.startsWith("respond:")) playSound(currentResponse?.choice === "fold" ? "fold" : "stay", soundVolume);
     if (eventKey.startsWith("toep:")) playSound("toep", soundVolume);
     if (eventKey.startsWith("win:") && game.message.includes(game.me.name)) playSound("applause", soundVolume);
   }, [game, lastEventKey, soundVolume]);
@@ -112,8 +144,8 @@ export default function Page() {
 
   return (
     <>
-      {game.status === "lobby" && <Lobby game={game} act={(type) => act(type)} />}
-      {(game.status === "playing" || game.status === "discarding") && <GameTable game={game} act={act} onStop={goHome} soundVolume={soundVolume} setSoundVolume={updateSoundVolume} />}
+      {game.status === "lobby" && <Lobby game={game} act={(type) => act(type)} onLeave={goHome} />}
+      {(game.status === "playing" || game.status === "discarding") && <GameTable game={game} act={act} onStop={goHome} onLeave={goHome} soundVolume={soundVolume} setSoundVolume={updateSoundVolume} />}
       {game.status === "finished" && <EndScreen game={game} goHome={goHome} />}
       {error && <button onClick={() => setError("")} className="fixed left-1/2 top-[max(1rem,env(safe-area-inset-top))] z-50 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 rounded-2xl border border-[#e86c5d]/30 bg-[#52251f] p-4 text-left text-sm font-bold shadow-2xl">{error}<span className="float-right opacity-50">×</span></button>}
     </>

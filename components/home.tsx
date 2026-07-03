@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AvatarPicker, Button, Field, Logo, avatars } from "./ui";
 import { GameMode } from "@/lib/types";
 
@@ -17,6 +17,28 @@ export function Home({ initialCode, onEnter }: { initialCode?: string; onEnter: 
   const [stopAtFirstLoser, setStopAtFirstLoser] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const savedName = localStorage.getItem("toep-profile-name");
+    const savedAvatar = localStorage.getItem("toep-profile-avatar");
+    if (savedName) setName(savedName);
+    if (savedAvatar) setAvatar(savedAvatar);
+  }, []);
+
+  useEffect(() => {
+    if (name.trim()) localStorage.setItem("toep-profile-name", name);
+  }, [name]);
+
+  useEffect(() => {
+    localStorage.setItem("toep-profile-avatar", avatar);
+  }, [avatar]);
+
+  function resetProfile() {
+    localStorage.removeItem("toep-profile-name");
+    localStorage.removeItem("toep-profile-avatar");
+    setName("");
+    setAvatar(avatars[0]);
+  }
 
   async function submitCreate(event: React.FormEvent) {
     event.preventDefault(); setBusy(true); setError("");
@@ -90,6 +112,9 @@ export function Home({ initialCode, onEnter }: { initialCode?: string; onEnter: 
           Kies je kop
           <AvatarPicker value={avatar} onChange={setAvatar} />
         </label>
+        <button type="button" onClick={resetProfile} className="-mt-2 justify-self-start rounded-full border border-white/10 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-cream/40">
+          Profiel wissen
+        </button>
         {isCreate ? <>
           <label className="grid gap-2 text-xs font-black uppercase tracking-wider text-cream/50">
             Speltype

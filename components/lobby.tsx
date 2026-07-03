@@ -2,9 +2,9 @@
 
 import { QRCodeSVG } from "qrcode.react";
 import { PublicGame } from "@/lib/types";
-import { Button, Logo } from "./ui";
+import { Button, Logo, PlayerAvatar } from "./ui";
 
-export function Lobby({ game, act }: { game: PublicGame; act: (type: string) => Promise<void> }) {
+export function Lobby({ game, act, onLeave }: { game: PublicGame; act: (type: string) => Promise<void>; onLeave: () => void }) {
   const me = game.me!;
   const isHost = me.id === game.hostId;
   const joinUrl = typeof window === "undefined" ? "" : `${window.location.origin}/?spel=${game.code}`;
@@ -39,7 +39,7 @@ export function Lobby({ game, act }: { game: PublicGame; act: (type: string) => 
         <div className="grid gap-2">
           {game.players.map((player) => (
             <div key={player.id} className="flex h-16 items-center gap-3 rounded-2xl border border-white/10 bg-white/[.035] px-4">
-              <span className="text-2xl">{player.avatar}</span>
+              <PlayerAvatar avatar={player.avatar} size="sm" />
               <div className="min-w-0 flex-1"><div className="truncate font-black">{player.name}</div><div className="text-[10px] font-bold uppercase tracking-wider text-cream/30">{player.id === game.hostId ? "Host" : "Speler"}</div></div>
               <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase ${player.ready ? "bg-lime/15 text-lime" : "bg-white/5 text-cream/30"}`}>{player.ready ? "Klaar" : "Wacht"}</span>
             </div>
@@ -58,6 +58,7 @@ export function Lobby({ game, act }: { game: PublicGame; act: (type: string) => 
       <div className="sticky bottom-4 grid gap-2">
         <Button variant={me.ready ? "ghost" : "primary"} onClick={() => act("ready")}>{me.ready ? "Toch niet klaar" : "Ik ben klaar"}</Button>
         {isHost && <Button variant="secondary" disabled={game.players.length < 2 || !game.players.every((player) => player.ready)} onClick={() => act("start")}>Potje starten</Button>}
+        <Button variant="ghost" onClick={onLeave}>Spel verlaten</Button>
         {!isHost && <p className="text-center text-xs font-bold text-cream/30">De host start zodra iedereen klaar is.</p>}
       </div>
     </main>
