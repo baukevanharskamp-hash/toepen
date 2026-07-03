@@ -60,9 +60,9 @@ function resizeAvatar(file: File): Promise<string> {
           reject(new Error("Foto verwerken lukte niet."));
           return;
         }
-        const sourceSize = Math.min(image.width, image.height);
+        const sourceSize = Math.min(image.width, image.height) * 0.72;
         const sourceX = (image.width - sourceSize) / 2;
-        const sourceY = (image.height - sourceSize) / 2;
+        const sourceY = Math.max(0, (image.height - sourceSize) * 0.38);
         context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 0, 0, size, size);
         resolve(canvas.toDataURL("image/jpeg", 0.78));
       };
@@ -89,11 +89,16 @@ export function PlayerAvatar({
     );
   }
   return (
-    <span className={`relative inline-block shrink-0 ${sizes[size]} ${className}`}>
-      <span className="absolute bottom-0 left-1/2 h-[48%] w-[72%] -translate-x-1/2 rounded-t-full border border-lime/25 bg-lime shadow-[0_5px_0_rgba(0,0,0,.18)]" />
-      <span className="absolute bottom-[20%] left-[18%] h-[18%] w-[16%] -rotate-12 rounded-full bg-amber" />
-      <span className="absolute bottom-[20%] right-[18%] h-[18%] w-[16%] rotate-12 rounded-full bg-amber" />
-      <img src={avatar} alt="Profielfoto" className="absolute left-1/2 top-0 h-[72%] w-[72%] -translate-x-1/2 rounded-full border-2 border-cream object-cover shadow-card" />
+    <span className={`relative inline-block shrink-0 overflow-visible ${sizes[size]} ${className}`}>
+      <span className="absolute bottom-[2%] left-1/2 h-[46%] w-[76%] -translate-x-1/2 rounded-[40%_40%_12%_12%] border border-lime/20 bg-lime shadow-[0_6px_0_rgba(0,0,0,.18)]" />
+      <span className="absolute bottom-[24%] left-1/2 h-[18%] w-[24%] -translate-x-1/2 rounded-b-full bg-[#f1c27d]" />
+      <span className="absolute bottom-[23%] left-[14%] h-[18%] w-[18%] -rotate-12 rounded-full bg-[#f1c27d]" />
+      <span className="absolute bottom-[23%] right-[14%] h-[18%] w-[18%] rotate-12 rounded-full bg-[#f1c27d]" />
+      <span className="absolute bottom-[16%] left-1/2 h-[13%] w-[34%] -translate-x-1/2 rounded-full bg-black/20 blur-[2px]" />
+      <span className="absolute bottom-[13%] left-1/2 -translate-x-1/2 text-[9px] font-black text-ink/35">TOEP</span>
+      <span className="absolute left-1/2 top-[-5%] h-[76%] w-[76%] -translate-x-1/2 overflow-hidden rounded-[48%_52%_46%_54%/42%_45%_55%_58%] border-2 border-cream bg-cream shadow-card">
+        <img src={avatar} alt="Profielfoto" className="h-full w-full scale-125 object-cover" />
+      </span>
     </span>
   );
 }
